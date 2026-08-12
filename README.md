@@ -56,5 +56,5 @@ Output targets this robot project specifically:
 
 Pushing to `main` builds and publishes to GitHub Pages via
 `.github/workflows/deploy.yml`. Enable Pages with source "GitHub Actions" in
-the repo settings. `vite.config.ts` sets `base` to `/subsystem-generator/`
+the repo settings. `vite.config.ts` sets `base` to `/FRC-Subsystem-Generator/`
 under CI — rename it there if the repo is named something else.
