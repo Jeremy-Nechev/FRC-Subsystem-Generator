@@ -237,7 +237,7 @@ export function MechanismCard({
                 <Num label="kS" value={mech.kS} onChange={(v) => onChange({ kS: v })} />
                 <Num label="kV" value={mech.kV} onChange={(v) => onChange({ kV: v })} />
                 <Num label="kA (0 to omit)" value={mech.kA} onChange={(v) => onChange({ kA: v })} />
-                {mech.archetype === 'arm' && mech.simulateGravity && (
+                {positional && mech.simulateGravity && (
                   <Num label="kG" value={mech.kG} onChange={(v) => onChange({ kG: v })} />
                 )}
               </>

@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import type { Archetype, MechanismConfig, SubsystemConfig } from './types';
 import { ARCHETYPES } from './types';
-import { newId, newMechanism, newSubsystem, nomadIntakeExample } from './defaults';
+import {
+  newId,
+  newMechanism,
+  newSubsystem,
+  nomadIntakeExample,
+  normalizeConfig,
+  normalizeMechanism,
+} from './defaults';
 import { generateAll, generateVisualizerSnippets } from './generate';
 import { MechanismCard } from './components/MechanismCard';
 
@@ -13,10 +20,10 @@ const STORAGE_KEY = 'nomad-subsystem-generator-config';
  * colliding ids, which made edits apply to more than one mechanism.
  */
 function withFreshIds(config: SubsystemConfig): SubsystemConfig {
-  return {
+  return normalizeConfig({
     ...config,
     mechanisms: config.mechanisms.map((m) => ({ ...m, id: newId() })),
-  };
+  });
 }
 
 function loadConfig(): SubsystemConfig {
@@ -85,10 +92,18 @@ export default function App() {
   const patch = (p: Partial<SubsystemConfig>) => setConfig((c) => ({ ...c, ...p }));
 
   const patchMechanism = (id: string, p: Partial<MechanismConfig>) =>
-    setConfig((c) => ({
-      ...c,
-      mechanisms: c.mechanisms.map((m) => (m.id === id ? { ...m, ...p } : m)),
-    }));
+    setConfig((c) => {
+      const prev = c.mechanisms.find((m) => m.id === id);
+      const mechanisms = c.mechanisms.map((m) =>
+        m.id === id ? normalizeMechanism({ ...m, ...p }) : m,
+      );
+      // Follow a rename so the visualizer keeps pointing at the same mechanism.
+      const visualizer =
+        prev && p.name !== undefined && c.visualizer.drivenBy === prev.name
+          ? { ...c.visualizer, drivenBy: p.name }
+          : c.visualizer;
+      return { ...c, mechanisms, visualizer };
+    });
 
   const addMechanism = (archetype: Archetype) => {
     const mech = newMechanism(archetype, archetype);

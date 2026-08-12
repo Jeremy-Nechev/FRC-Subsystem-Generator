@@ -87,6 +87,26 @@ export function newMechanism(archetype: Archetype, name: string): MechanismConfi
   };
 }
 
+/**
+ * Forces the control request to be legal for the archetype. A mismatch is
+ * invisible in the UI — a select whose value is not among its options renders
+ * as the first option — and generates code for the wrong quantity.
+ */
+export function normalizeMechanism(mech: MechanismConfig): MechanismConfig {
+  const controls = ARCHETYPES[mech.archetype].controls;
+  return controls.includes(mech.control) ? mech : { ...mech, control: controls[0] };
+}
+
+/** Repairs anything that can drift out of sync across the whole config. */
+export function normalizeConfig(config: SubsystemConfig): SubsystemConfig {
+  const mechanisms = config.mechanisms.map(normalizeMechanism);
+  const names = new Set(mechanisms.map((m) => m.name));
+  const visualizer = names.has(config.visualizer.drivenBy)
+    ? config.visualizer
+    : { ...config.visualizer, drivenBy: mechanisms[0]?.name ?? '' };
+  return { ...config, mechanisms, visualizer };
+}
+
 export function newSubsystem(): SubsystemConfig {
   return {
     name: 'Example',

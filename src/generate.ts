@@ -1,5 +1,6 @@
 import type { MechanismConfig, SubsystemConfig } from './types';
 import { ARCHETYPES, TEST_STATES } from './types';
+import { normalizeConfig } from './defaults';
 import {
   assign,
   cap,
@@ -86,7 +87,7 @@ function mechanismConstants(config: SubsystemConfig, mech: MechanismConfig): str
     if (mech.kA !== 0) {
       lines.push(`public static final double ${c('A')} = ${d(mech.kA)};`);
     }
-    if (mech.archetype === 'arm' && mech.simulateGravity) {
+    if (isPositional(mech) && mech.simulateGravity) {
       lines.push(`public static final double ${c('G')} = ${d(mech.kG)};`);
     }
     lines.push('');
@@ -250,18 +251,21 @@ ${inputs}
 function generateSubsystem(config: SubsystemConfig): GeneratedFile {
   const { name, visualizer: viz } = config;
   const anyPositional = config.mechanisms.some(isPositional);
-  const vizOn = viz.enabled && viz.mechanism2d;
   const driven = config.mechanisms.find((m) => m.name === viz.drivenBy);
   const vizIsArm = driven?.archetype === 'arm';
+  const viz2d = viz.enabled && viz.mechanism2d;
+  // A 3D pose only means something for a mechanism that moves in space.
+  const viz3d =
+    viz.enabled && viz.advantageScope3d && !!driven && isPositional(driven);
 
   const imports = [
     'edu.wpi.first.wpilibj2.command.SubsystemBase',
-    ...(vizOn
+    ...(viz2d || viz3d ? ['frc.robot.RobotVisualizer'] : []),
+    ...(viz2d || (viz3d && vizIsArm) ? ['edu.wpi.first.math.util.Units'] : []),
+    ...(viz2d
       ? [
-          'edu.wpi.first.math.util.Units',
           'edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d',
           'edu.wpi.first.wpilibj.util.Color8Bit',
-          'frc.robot.RobotVisualizer',
         ]
       : []),
   ]
@@ -309,7 +313,7 @@ function generateSubsystem(config: SubsystemConfig): GeneratedFile {
 
   const resolvers = config.mechanisms.map((m) => resolver(config, m)).join('\n\n');
 
-  const ligament = vizOn
+  const ligament = viz2d
     ? `
     private final MechanismLigament2d ${name.toLowerCase()}Ligament = new MechanismLigament2d(
             "${name.toLowerCase()}",
@@ -320,12 +324,21 @@ function generateSubsystem(config: SubsystemConfig): GeneratedFile {
 `
     : '';
 
-  const vizUpdate =
-    vizOn && driven
+  const update2d =
+    viz2d && driven
       ? vizIsArm
-        ? `\n        ${name.toLowerCase()}Ligament.setAngle(inputs.${measureField(config, driven)});\n`
-        : `\n        ${name.toLowerCase()}Ligament.setLength(\n                Units.inchesToMeters(${d(viz.ligamentLengthInches)}) + inputs.${measureField(config, driven)});\n`
+        ? `        ${name.toLowerCase()}Ligament.setAngle(inputs.${measureField(config, driven)});\n`
+        : `        ${name.toLowerCase()}Ligament.setLength(\n                Units.inchesToMeters(${d(viz.ligamentLengthInches)}) + inputs.${measureField(config, driven)});\n`
       : '';
+
+  const update3d =
+    viz3d && driven
+      ? vizIsArm
+        ? `        RobotVisualizer.update${name}(\n                Units.degreesToRadians(inputs.${measureField(config, driven)}));\n`
+        : `        RobotVisualizer.update${name}(inputs.${measureField(config, driven)});\n`
+      : '';
+
+  const vizUpdate = update2d || update3d ? `\n${update2d}${update3d}` : '';
 
   const contents = `package ${pkg(config)};
 
@@ -356,7 +369,7 @@ ${ligament}
     }
 
     public ${name}(${name}IO io) {
-        this.io = io;${vizOn ? `\n        RobotVisualizer.add${name}(${name.toLowerCase()}Ligament);` : ''}
+        this.io = io;${viz2d ? `\n        RobotVisualizer.add${name}(${name.toLowerCase()}Ligament);` : ''}
     }
 
     public void setState(${name}State state) {
@@ -466,9 +479,11 @@ function configureMethod(config: SubsystemConfig, mech: MechanismConfig): string
       `                .withKV(${c('V')})`,
     ];
     if (mech.kA !== 0) slot.push(`                .withKA(${c('A')})`);
-    if (mech.archetype === 'arm' && mech.simulateGravity) {
+    if (isPositional(mech) && mech.simulateGravity) {
+      const gravityType =
+        mech.archetype === 'arm' ? 'Arm_Cosine' : 'Elevator_Static';
       slot.push(`                .withKG(${c('G')})`);
-      slot.push(`                .withGravityType(GravityTypeValue.Arm_Cosine)`);
+      slot.push(`                .withGravityType(GravityTypeValue.${gravityType})`);
     }
     lines.push(slot.join('\n') + ';');
   }
@@ -535,7 +550,7 @@ function generateTalonFX(config: SubsystemConfig): GeneratedFile {
   const anyMotionMagic = config.mechanisms.some(usesMotionMagic);
   const anyGains = config.mechanisms.some(usesGains);
   const anyGravity = config.mechanisms.some(
-    (m) => m.archetype === 'arm' && m.simulateGravity && usesGains(m),
+    (m) => isPositional(m) && m.simulateGravity && usesGains(m),
   );
   const anyFollower = config.mechanisms.some((m) => m.motors.length > 1);
   const controls = new Set(config.mechanisms.map((m) => m.control));
@@ -946,7 +961,8 @@ export interface Snippet {
   code: string;
 }
 
-export function generateVisualizerSnippets(config: SubsystemConfig): Snippet[] {
+export function generateVisualizerSnippets(rawConfig: SubsystemConfig): Snippet[] {
+  const config = normalizeConfig(rawConfig);
   const { name, visualizer: viz } = config;
   if (!viz.enabled) return [];
 
@@ -1030,7 +1046,10 @@ export function generateVisualizerSnippets(config: SubsystemConfig): Snippet[] {
 
 // ------------------------------------------------------------------- public
 
-export function generateAll(config: SubsystemConfig): GeneratedFile[] {
+export function generateAll(rawConfig: SubsystemConfig): GeneratedFile[] {
+  // Normalize here too, so a config that reaches the generator by any route
+  // (import, storage, a future caller) can never emit mismatched code.
+  const config = normalizeConfig(rawConfig);
   return [
     generateSubsystem(config),
     generateIO(config),

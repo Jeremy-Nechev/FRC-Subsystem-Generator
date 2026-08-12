@@ -46,10 +46,15 @@ export function method(
     : `${verb}${cap(noun)}`;
 }
 
-/** The noun a mechanism's setter and inputs are built around. */
+/**
+ * The noun a mechanism's setter and inputs are built around. The archetype
+ * wins over the control request: a positional mechanism is always commanded by
+ * position, so a stale VoltageOut can never turn an arm into a voltage
+ * mechanism.
+ */
 export function quantity(mech: MechanismConfig): 'velocity' | 'position' | 'voltage' {
-  if (mech.control === 'VoltageOut') return 'voltage';
-  return ARCHETYPES[mech.archetype].positional ? 'position' : 'velocity';
+  if (ARCHETYPES[mech.archetype].positional) return 'position';
+  return mech.control === 'VoltageOut' ? 'voltage' : 'velocity';
 }
 
 /** rollerVelocityRPM / extensionPositionMeters / hoodPositionDegrees */
