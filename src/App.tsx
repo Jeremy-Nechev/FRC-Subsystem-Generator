@@ -286,9 +286,8 @@ export default function App() {
               <h2>States</h2>
             </header>
             <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: 12.5 }}>
-              A fixed <code>IDLE / TEST_FORWARD / TEST_REVERSE</code> enum is generated so you
-              can verify the hardware moves. Replace it with the real states once bring-up
-              passes — the switch arms in <code>{config.name}.java</code> are where they go.
+              A fixed <code>IDLE / TEST_FORWARD / TEST_REVERSE</code> enum is automatically generated so you
+              can verify the mechanism moves. Replace it with the real states after you verify it works in sim.
             </p>
           </section>
 
