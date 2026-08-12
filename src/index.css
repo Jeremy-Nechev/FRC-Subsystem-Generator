@@ -1,4 +1,39 @@
+/*
+ * Kabel and Akzidenz-Grotesk are licensed fonts, so the files are not in this
+ * repo. To use the real faces: put the .woff2 files in src/fonts/, uncomment
+ * the blocks below, and Vite will hash them and rewrite the URLs for whatever
+ * base path Pages serves from. Until then the stacks fall back to the closest
+ * system faces — Futura/Century Gothic for Kabel, Helvetica for Akzidenz.
+ *
+ * @font-face {
+ *   font-family: 'Kabel';
+ *   src: url('./fonts/kabel-book.woff2') format('woff2');
+ *   font-weight: 400;
+ *   font-display: swap;
+ * }
+ * @font-face {
+ *   font-family: 'Akzidenz-Grotesk';
+ *   src: url('./fonts/akzidenz-grotesk-regular.woff2') format('woff2');
+ *   font-weight: 400;
+ *   font-display: swap;
+ * }
+ * @font-face {
+ *   font-family: 'Akzidenz-Grotesk';
+ *   src: url('./fonts/akzidenz-grotesk-medium.woff2') format('woff2');
+ *   font-weight: 500;
+ *   font-display: swap;
+ * }
+ */
+
 :root {
+  /* Kabel is geometric with a low x-height: great for headings, poor at 11px. */
+  --font-display: 'Kabel', 'Kabel LT Pro', 'ITC Kabel', Futura, 'Century Gothic',
+    'Avenir Next', sans-serif;
+  /* Akzidenz is the workhorse grotesque — everything dense and small. */
+  --font-sans: 'Akzidenz-Grotesk', 'Akzidenz-Grotesk Pro', 'Helvetica Neue', Helvetica,
+    Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
   --bg: #161614;
   --surface: #1f1f1d;
   --surface-alt: #272725;
@@ -7,8 +42,12 @@
   --text: #ecebe6;
   --text-dim: #9b9a93;
   --border: #35342f;
-  --accent: #5dcaa5;
-  --accent-bg: #143029;
+  /* Brand accent. Used for borders, focus rings and fills. */
+  --accent: #69882c;
+  /* #69882c only reaches ~4:1 on these dark surfaces, so text uses a lighter
+     tint of the same hue (~7.9:1). */
+  --accent-text: #9dbf58;
+  --accent-bg: #1b2410;
   --danger: #f09595;
   --danger-bg: #3a1c1c;
   --radius: 8px;
@@ -23,20 +62,23 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
 }
 
 h1 {
-  font-size: 17px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   margin: 0;
 }
 
 h2 {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 500;
   margin: 0;
 }
 
@@ -57,7 +99,7 @@ button:hover {
 button.primary {
   background: var(--accent-bg);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 500;
 }
 
@@ -235,7 +277,7 @@ label.check input {
 .mech-summary .chip {
   color: var(--text-dim);
   font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 .mech-summary .spacer {
@@ -263,7 +305,7 @@ label.check input {
 .archetypes button[aria-pressed='true'] {
   background: var(--accent-bg);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 500;
 }
 
@@ -299,7 +341,7 @@ label.check input {
   border-radius: var(--radius) var(--radius) 0 0;
   border-bottom-color: transparent;
   font-size: 12.5px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   padding: 5px 9px;
 }
 
@@ -317,7 +359,7 @@ label.check input {
   padding: 12px 14px;
   overflow: auto;
   max-height: calc(100vh - 190px);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.55;
   tab-size: 4;
@@ -328,7 +370,7 @@ label.check input {
 }
 
 .snippet .target {
-  color: #6a9955;
+  color: var(--accent-text);
   font-size: 11.5px;
   margin-bottom: 3px;
 }

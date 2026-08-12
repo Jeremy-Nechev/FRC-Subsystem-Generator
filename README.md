@@ -52,6 +52,30 @@ Output targets this robot project specifically:
 - `CtreUtil.reportIfNotOk` and `CtreUtil.configureKrakenX60Sim` / `X44Sim`
 - `RobotVisualizer` for the `Mechanism2d` and AdvantageScope component poses
 
+## Design
+
+Dark theme only. The accent is `#69882c`; because that green only reaches
+about 4:1 against the dark surfaces, text uses a lighter tint of the same hue
+(`--accent-text`) while `#69882c` itself carries borders, focus rings and
+fills.
+
+Two typefaces:
+
+| Role | Font | Used for |
+| --- | --- | --- |
+| Display | Kabel | headings — geometric, low x-height, poor below ~14px |
+| Text | Akzidenz-Grotesk | everything else: labels, inputs, buttons |
+
+Both are licensed, so the files are **not** in this repo and the stacks
+currently fall back to Futura / Century Gothic and Helvetica respectively. To
+use the real faces, drop the `.woff2` files into `src/fonts/` and uncomment the
+`@font-face` blocks at the top of `src/index.css`. Keeping them under `src/`
+rather than `public/` lets Vite hash them and rewrite the URLs for whatever
+base path Pages serves from.
+
+The generated-code pane stays monospaced regardless — Java indentation only
+reads correctly in a fixed-width face.
+
 ## Deploying
 
 Pushing to `main` builds and publishes to GitHub Pages via
