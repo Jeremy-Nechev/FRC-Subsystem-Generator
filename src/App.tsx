@@ -2,16 +2,27 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import type { Archetype, MechanismConfig, SubsystemConfig } from './types';
 import { ARCHETYPES } from './types';
-import { newMechanism, newSubsystem, nomadIntakeExample } from './defaults';
+import { newId, newMechanism, newSubsystem, nomadIntakeExample } from './defaults';
 import { generateAll, generateVisualizerSnippets } from './generate';
 import { MechanismCard } from './components/MechanismCard';
 
 const STORAGE_KEY = 'nomad-subsystem-generator-config';
 
+/**
+ * Reassigns every mechanism id. Configs written by earlier versions can hold
+ * colliding ids, which made edits apply to more than one mechanism.
+ */
+function withFreshIds(config: SubsystemConfig): SubsystemConfig {
+  return {
+    ...config,
+    mechanisms: config.mechanisms.map((m) => ({ ...m, id: newId() })),
+  };
+}
+
 function loadConfig(): SubsystemConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as SubsystemConfig;
+    if (raw) return withFreshIds(JSON.parse(raw) as SubsystemConfig);
   } catch {
     // Corrupt or unavailable storage just falls back to a fresh config.
   }
@@ -80,12 +91,16 @@ export default function App() {
     }));
 
   const addMechanism = (archetype: Archetype) => {
-    const existing = new Set(config.mechanisms.map((m) => m.name));
-    let name: string = archetype;
-    let n = 2;
-    while (existing.has(name)) name = `${archetype}${n++}`;
-    const mech = newMechanism(archetype, name);
-    setConfig((c) => ({ ...c, mechanisms: [...c.mechanisms, mech] }));
+    const mech = newMechanism(archetype, archetype);
+    // The name has to be uniquified inside the updater; reading `config` from
+    // the closure goes stale when several are added before the next render.
+    setConfig((c) => {
+      const existing = new Set(c.mechanisms.map((m) => m.name));
+      let name: string = archetype;
+      let n = 2;
+      while (existing.has(name)) name = `${archetype}${n++}`;
+      return { ...c, mechanisms: [...c.mechanisms, { ...mech, name }] };
+    });
     setOpenId(mech.id);
   };
 
@@ -129,7 +144,7 @@ export default function App() {
   const importJson = (file: File) => {
     file.text().then((text) => {
       try {
-        const parsed = JSON.parse(text) as SubsystemConfig;
+        const parsed = withFreshIds(JSON.parse(text) as SubsystemConfig);
         setConfig(parsed);
         setOpenId(parsed.mechanisms[0]?.id ?? null);
       } catch {

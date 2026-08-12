@@ -1,8 +1,15 @@
 import type { Archetype, MechanismConfig, SubsystemConfig } from './types';
 import { ARCHETYPES } from './types';
 
-let counter = 0;
-const nextId = () => `m${++counter}`;
+/**
+ * Ids must not come from a module-level counter: the counter resets on every
+ * page load while ids saved in localStorage persist, so a fresh mechanism
+ * would collide with a stored one and edits would hit both.
+ */
+export const newId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `m-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 
 const base = (): Omit<MechanismConfig, 'id' | 'name' | 'archetype' | 'control'> => ({
   motorModel: 'KrakenX60',
@@ -73,7 +80,7 @@ export function newMechanism(archetype: Archetype, name: string): MechanismConfi
   return {
     ...base(),
     ...PER_ARCHETYPE[archetype],
-    id: nextId(),
+    id: newId(),
     name,
     archetype,
     control: ARCHETYPES[archetype].controls[0],
