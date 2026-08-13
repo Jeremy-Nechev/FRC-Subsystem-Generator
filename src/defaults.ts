@@ -28,6 +28,7 @@ const base = (): Omit<MechanismConfig, 'id' | 'name' | 'archetype' | 'control'> 
   invertLead: 'CounterClockwise_Positive',
   minPosition: 0,
   maxPosition: 0.5,
+  softLimits: true,
   cruiseVelocity: 10,
   acceleration: 200,
   armLengthMeters: 0.3,

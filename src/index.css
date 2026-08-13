@@ -1,16 +1,10 @@
 /*
- * Kabel and Akzidenz-Grotesk are licensed fonts, so the files are not in this
- * repo. To use the real faces: put the .woff2 files in src/fonts/, uncomment
- * the blocks below, and Vite will hash them and rewrite the URLs for whatever
- * base path Pages serves from. Until then the stacks fall back to the closest
- * system faces — Futura/Century Gothic for Kabel, Helvetica for Akzidenz.
+ * Akzidenz-Grotesk is a licensed font, so the files are not in this repo. To
+ * use the real faces: put the .woff2 files in src/fonts/, uncomment the blocks
+ * below, and Vite will hash them and rewrite the URLs for whatever base path
+ * Pages serves from. Until then the stack falls back to Helvetica, which
+ * descends from Akzidenz and stands in closely.
  *
- * @font-face {
- *   font-family: 'Kabel';
- *   src: url('./fonts/kabel-book.woff2') format('woff2');
- *   font-weight: 400;
- *   font-display: swap;
- * }
  * @font-face {
  *   font-family: 'Akzidenz-Grotesk';
  *   src: url('./fonts/akzidenz-grotesk-regular.woff2') format('woff2');
@@ -26,10 +20,7 @@
  */
 
 :root {
-  /* Kabel is geometric with a low x-height: great for headings, poor at 11px. */
-  --font-display: 'Kabel', 'Kabel LT Pro', 'ITC Kabel', Futura, 'Century Gothic',
-    'Avenir Next', sans-serif;
-  /* Akzidenz is the workhorse grotesque — everything dense and small. */
+  /* One family for the whole UI, headings included. */
   --font-sans: 'Akzidenz-Grotesk', 'Akzidenz-Grotesk Pro', 'Helvetica Neue', Helvetica,
     Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -67,16 +58,15 @@ body {
   line-height: 1.5;
 }
 
+/* Headings share the body family, so size and weight carry the hierarchy. */
 h1 {
-  font-family: var(--font-display);
   font-size: 20px;
   font-weight: 500;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
 h2 {
-  font-family: var(--font-display);
   font-size: 16px;
   font-weight: 500;
   margin: 0;

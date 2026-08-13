@@ -31,6 +31,8 @@ const pkg = (config: SubsystemConfig) =>
 
 const isPositional = (mech: MechanismConfig) => ARCHETYPES[mech.archetype].positional;
 const usesMotionMagic = (mech: MechanismConfig) => mech.control === 'MotionMagicVoltage';
+const usesSoftLimits = (mech: MechanismConfig) =>
+  isPositional(mech) && mech.softLimits;
 const usesGains = (mech: MechanismConfig) => mech.control !== 'VoltageOut';
 
 /** The parameter name and unit for a mechanism's setter. */
@@ -498,6 +500,23 @@ function configureMethod(config: SubsystemConfig, mech: MechanismConfig): string
     lines.push(`                .withMotionMagicAcceleration(${c('Acceleration')});`);
   }
 
+  if (usesSoftLimits(mech)) {
+    // Thresholds are in mechanism rotations, so they go through the same
+    // conversion helper as the setter — one source of truth for the units.
+    const unit = mech.archetype === 'arm' ? 'Degrees' : 'Meters';
+    const toRotations =
+      mech.archetype === 'arm'
+        ? `${mech.name}DegreesToRotations`
+        : `${mech.name}MetersToRotations`;
+    lines.push(`        ${cfg}.SoftwareLimitSwitch = new SoftwareLimitSwitchConfigs()`);
+    lines.push(`                .withForwardSoftLimitEnable(true)`);
+    lines.push(`                .withForwardSoftLimitThreshold(`);
+    lines.push(`                        ${toRotations}(${c(`Max${unit}`)}))`);
+    lines.push(`                .withReverseSoftLimitEnable(true)`);
+    lines.push(`                .withReverseSoftLimitThreshold(`);
+    lines.push(`                        ${toRotations}(${c(`Min${unit}`)}));`);
+  }
+
   lines.push('');
   lines.push(
     `        CtreUtil.reportIfNotOk(\n                "configure ${mech.name}",\n                ${leadMotor(mech)}.getConfigurator().apply(${cfg}));`,
@@ -567,6 +586,9 @@ function generateTalonFX(config: SubsystemConfig): GeneratedFile {
     ...(anyMotionMagic ? ['com.ctre.phoenix6.configs.MotionMagicConfigs'] : []),
     'com.ctre.phoenix6.configs.MotorOutputConfigs',
     ...(anyGains ? ['com.ctre.phoenix6.configs.Slot0Configs'] : []),
+    ...(config.mechanisms.some(usesSoftLimits)
+      ? ['com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs']
+      : []),
     'com.ctre.phoenix6.configs.TalonFXConfiguration',
     ...(anyFollower ? ['com.ctre.phoenix6.controls.Follower'] : []),
     ...[...controls].sort().map((c) => `com.ctre.phoenix6.controls.${c}`),

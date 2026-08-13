@@ -261,6 +261,14 @@ export function MechanismCard({
                   value={mech.maxPosition}
                   onChange={(v) => onChange({ maxPosition: v })}
                 />
+                <label className="check" style={{ gridColumn: '1 / -1' }}>
+                  <input
+                    type="checkbox"
+                    checked={mech.softLimits}
+                    onChange={(e) => onChange({ softLimits: e.target.checked })}
+                  />
+                  Enforce min/max as Phoenix soft limits
+                </label>
               </>
             )}
 

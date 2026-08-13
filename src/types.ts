@@ -58,6 +58,11 @@ export interface MechanismConfig {
   /** Positional archetypes only. Degrees for an arm, meters for an elevator. */
   minPosition: number;
   maxPosition: number;
+  /**
+   * Emit Phoenix 6 soft limits from min/max, so the motor itself refuses to
+   * drive past the travel range rather than relying on the caller.
+   */
+  softLimits: boolean;
 
   /** MotionMagicVoltage only. */
   cruiseVelocity: number;
