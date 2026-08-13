@@ -82,6 +82,9 @@ function mechanismConstants(config: SubsystemConfig, mech: MechanismConfig): str
   if (usesGains(mech)) {
     lines.push(`// ${title} gains`);
     lines.push(`public static final double ${c('P')} = ${d(mech.kP)};`);
+    if (mech.kD !== 0) {
+      lines.push(`public static final double ${c('D')} = ${d(mech.kD)};`);
+    }
     lines.push(`public static final double ${c('S')} = ${d(mech.kS)};`);
     lines.push(`public static final double ${c('V')} = ${d(mech.kV)};`);
     if (mech.kA !== 0) {
@@ -475,9 +478,10 @@ function configureMethod(config: SubsystemConfig, mech: MechanismConfig): string
     const slot: string[] = [
       `        ${cfg}.Slot0 = new Slot0Configs()`,
       `                .withKP(${c('P')})`,
-      `                .withKS(${c('S')})`,
-      `                .withKV(${c('V')})`,
     ];
+    if (mech.kD !== 0) slot.push(`                .withKD(${c('D')})`);
+    slot.push(`                .withKS(${c('S')})`);
+    slot.push(`                .withKV(${c('V')})`);
     if (mech.kA !== 0) slot.push(`                .withKA(${c('A')})`);
     if (isPositional(mech) && mech.simulateGravity) {
       const gravityType =

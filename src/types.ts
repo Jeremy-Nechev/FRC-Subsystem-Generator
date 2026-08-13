@@ -41,8 +41,11 @@ export interface MechanismConfig {
   moi: number;
 
   kP: number;
+  /** Omitted from the generated config when zero, like kA. */
+  kD: number;
   kS: number;
   kV: number;
+  /** Omitted from the generated config when zero. */
   kA: number;
   /** Arm only, and only when gravity is simulated. */
   kG: number;

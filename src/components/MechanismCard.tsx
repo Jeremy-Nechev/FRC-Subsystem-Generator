@@ -1,6 +1,7 @@
 import type { Archetype, MechanismConfig } from '../types';
 import { ARCHETYPES } from '../types';
 import { quantity } from '../naming';
+import { reseedForArchetype } from '../defaults';
 
 interface Props {
   mech: MechanismConfig;
@@ -49,13 +50,16 @@ export function MechanismCard({
   const positional = meta.positional;
   const q = quantity(mech);
   const unit = mech.archetype === 'arm' ? 'deg' : 'm';
+  // Motion Magic is configured in mechanism rotations, but min/max above are in
+  // degrees or metres. Show the conversion so the two are not read as one scale.
+  const perRotation =
+    mech.archetype === 'arm' ? 360 : 2 * Math.PI * mech.drumRadiusMeters;
+  const round = (v: number) => Number(v.toFixed(v < 1 ? 3 : 1));
+  const motionPerSecond = round(mech.cruiseVelocity * perRotation);
+  const motionPerSecondSquared = round(mech.acceleration * perRotation);
 
   const setArchetype = (archetype: Archetype) => {
-    const controls = ARCHETYPES[archetype].controls;
-    onChange({
-      archetype,
-      control: controls.includes(mech.control) ? mech.control : controls[0],
-    });
+    onChange(reseedForArchetype(mech, archetype));
   };
 
   const setMotor = (index: number, patch: Partial<MechanismConfig['motors'][0]>) => {
@@ -234,6 +238,7 @@ export function MechanismCard({
               <>
                 <div className="subhead">Gains</div>
                 <Num label="kP" value={mech.kP} onChange={(v) => onChange({ kP: v })} />
+                <Num label="kD (0 to omit)" value={mech.kD} onChange={(v) => onChange({ kD: v })} />
                 <Num label="kS" value={mech.kS} onChange={(v) => onChange({ kS: v })} />
                 <Num label="kV" value={mech.kV} onChange={(v) => onChange({ kV: v })} />
                 <Num label="kA (0 to omit)" value={mech.kA} onChange={(v) => onChange({ kA: v })} />
@@ -263,12 +268,12 @@ export function MechanismCard({
               <>
                 <div className="subhead">Motion Magic</div>
                 <Num
-                  label="Cruise velocity (rot/s)"
+                  label={`Cruise velocity (mech rot/s ≈ ${motionPerSecond} ${unit}/s)`}
                   value={mech.cruiseVelocity}
                   onChange={(v) => onChange({ cruiseVelocity: v })}
                 />
                 <Num
-                  label="Acceleration (rot/s²)"
+                  label={`Acceleration (mech rot/s² ≈ ${motionPerSecondSquared} ${unit}/s²)`}
                   value={mech.acceleration}
                   onChange={(v) => onChange({ acceleration: v })}
                 />

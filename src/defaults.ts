@@ -17,6 +17,7 @@ const base = (): Omit<MechanismConfig, 'id' | 'name' | 'archetype' | 'control'> 
   reduction: 1,
   moi: 0.001,
   kP: 0.2,
+  kD: 0,
   kS: 0.25,
   kV: 0.12,
   kA: 0,
@@ -41,9 +42,9 @@ const PER_ARCHETYPE: Record<Archetype, Partial<MechanismConfig>> = {
   roller: {
     reduction: 3.45,
     moi: 0.001,
-    kP: 0.2,
-    kS: 0.25,
-    kV: 0.396,
+    kP: 0.1,
+    kS: 0.1,
+    kV: 0.1,
     neutralMode: 'Coast',
   },
   arm: {
@@ -94,7 +95,15 @@ export function newMechanism(archetype: Archetype, name: string): MechanismConfi
  */
 export function normalizeMechanism(mech: MechanismConfig): MechanismConfig {
   const controls = ARCHETYPES[mech.archetype].controls;
-  return controls.includes(mech.control) ? mech : { ...mech, control: controls[0] };
+  // Layering over the defaults backfills fields added since a config was
+  // saved. Absent keys fall through to the default; present ones win, so this
+  // is a no-op for a current config.
+  const filled: MechanismConfig = {
+    ...base(),
+    ...PER_ARCHETYPE[mech.archetype],
+    ...mech,
+  };
+  return controls.includes(filled.control) ? filled : { ...filled, control: controls[0] };
 }
 
 /** Repairs anything that can drift out of sync across the whole config. */
@@ -105,6 +114,27 @@ export function normalizeConfig(config: SubsystemConfig): SubsystemConfig {
     ? config.visualizer
     : { ...config.visualizer, drivenBy: mechanisms[0]?.name ?? '' };
   return { ...config, mechanisms, visualizer };
+}
+
+/**
+ * Re-seeds the physical and tuning fields when the archetype changes. Keeping
+ * the old values carries a roller's MOI, Coast neutral mode and kV onto an arm,
+ * where they are not just wrong but silently wrong. Identity — name, motors,
+ * CAN ids, motor model — is preserved.
+ */
+export function reseedForArchetype(
+  mech: MechanismConfig,
+  archetype: Archetype,
+): MechanismConfig {
+  if (mech.archetype === archetype) return mech;
+  const fresh = newMechanism(archetype, mech.name);
+  return {
+    ...fresh,
+    id: mech.id,
+    name: mech.name,
+    motors: mech.motors,
+    motorModel: mech.motorModel,
+  };
 }
 
 export function newSubsystem(): SubsystemConfig {
