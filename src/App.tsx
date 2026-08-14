@@ -133,7 +133,7 @@ export default function App() {
       zip.file(
         `${dir}/RobotVisualizer-snippets.txt`,
         snippets
-          .map((s) => `// ${s.label} — paste into ${s.target}\n\n${s.code}\n`)
+          .map((s) => `// ${s.label}. paste into ${s.target}\n\n${s.code}\n`)
           .join('\n\n'),
       );
     }
@@ -475,7 +475,7 @@ export default function App() {
               {snippets.map((s) => (
                 <div className="snippet" key={s.label}>
                   <div className="target">
-                    // {s.label} — paste into {s.target}
+                    // {s.label}. paste into {s.target}
                   </div>
                   <pre style={{ margin: 0 }}>{s.code}</pre>
                   <button
