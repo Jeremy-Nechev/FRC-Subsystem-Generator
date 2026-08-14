@@ -1,5 +1,6 @@
 import type {
   Archetype,
+  Component3dConfig,
   LigamentConfig,
   MechanismConfig,
   SubsystemConfig,
@@ -129,26 +130,66 @@ export function newLigament(
   };
 }
 
-/** Shape of the pre-multi-ligament visualizer config, for migration. */
+export function newComponent3d(
+  drivenBy: string,
+  overrides: Partial<Component3dConfig> = {},
+): Component3dConfig {
+  return {
+    id: newId(),
+    drivenBy,
+    parentId: '',
+    componentIndex: 0,
+    offsetXInches: 0,
+    offsetYInches: 0,
+    offsetZInches: 0,
+    axis: 'z',
+    ...overrides,
+  };
+}
+
+/** Shape of the pre-list visualizer config, for migration. */
 interface LegacyVisualizer {
   ligamentLengthInches?: number;
   ligamentAngleDegrees?: number;
   ligamentWidth?: number;
   color?: string;
+  drivenBy?: string;
+  componentIndex?: number;
+  poseXInches?: number;
+  poseYInches?: number;
+  poseZInches?: number;
+}
+
+/** Clears parent links that dangle or loop, in either list. */
+function sanitizeParents<T extends { id: string; parentId: string }>(items: T[]): T[] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return items.map((item) => {
+    let parentId = item.parentId !== item.id && byId.has(item.parentId) ? item.parentId : '';
+    const seen = new Set([item.id]);
+    for (let cursor = parentId; cursor; cursor = byId.get(cursor)?.parentId ?? '') {
+      if (seen.has(cursor)) {
+        parentId = '';
+        break;
+      }
+      seen.add(cursor);
+    }
+    return { ...item, parentId };
+  });
 }
 
 function normalizeVisualizer(
   viz: VisualizerConfig,
   mechanismNames: Set<string>,
-  fallbackName: string,
 ): VisualizerConfig {
   const legacy = viz as VisualizerConfig & LegacyVisualizer;
-  let ligaments = Array.isArray(viz.ligaments) ? viz.ligaments : [];
+  const legacyDriven =
+    legacy.drivenBy && mechanismNames.has(legacy.drivenBy) ? legacy.drivenBy : '';
 
+  let ligaments = Array.isArray(viz.ligaments) ? viz.ligaments : [];
   // Configs saved before ligaments were a list carried one flat set of fields.
   if (!ligaments.length && legacy.ligamentLengthInches !== undefined) {
     ligaments = [
-      newLigament(mechanismNames.has(viz.drivenBy) ? viz.drivenBy : '', {
+      newLigament(legacyDriven, {
         lengthInches: legacy.ligamentLengthInches,
         angleDegrees: legacy.ligamentAngleDegrees ?? 0,
         width: legacy.ligamentWidth ?? 6,
@@ -157,26 +198,25 @@ function normalizeVisualizer(
     ];
   }
 
-  const byId = new Map(ligaments.map((l) => [l.id, l]));
-  const sanitized = ligaments.map((l) => {
-    const drivenBy = mechanismNames.has(l.drivenBy) ? l.drivenBy : '';
-    let parentId = l.parentId !== l.id && byId.has(l.parentId) ? l.parentId : '';
-    // Walk up the chain; a loop would recurse forever when generating appends.
-    const seen = new Set([l.id]);
-    for (let cursor = parentId; cursor; cursor = byId.get(cursor)?.parentId ?? '') {
-      if (seen.has(cursor)) {
-        parentId = '';
-        break;
-      }
-      seen.add(cursor);
-    }
-    return { ...l, drivenBy, parentId };
-  });
+  let components = Array.isArray(viz.components) ? viz.components : [];
+  if (!components.length && legacy.componentIndex !== undefined) {
+    components = [
+      newComponent3d(legacyDriven, {
+        componentIndex: legacy.componentIndex,
+        offsetXInches: legacy.poseXInches ?? 0,
+        offsetYInches: legacy.poseYInches ?? 0,
+        offsetZInches: legacy.poseZInches ?? 0,
+      }),
+    ];
+  }
+
+  const clearMissing = <T extends { drivenBy: string }>(item: T): T =>
+    mechanismNames.has(item.drivenBy) ? item : { ...item, drivenBy: '' };
 
   return {
     ...viz,
-    ligaments: sanitized,
-    drivenBy: mechanismNames.has(viz.drivenBy) ? viz.drivenBy : fallbackName,
+    ligaments: sanitizeParents(ligaments).map(clearMissing),
+    components: sanitizeParents(components).map(clearMissing),
   };
 }
 
@@ -187,7 +227,7 @@ export function normalizeConfig(config: SubsystemConfig): SubsystemConfig {
   return {
     ...config,
     mechanisms,
-    visualizer: normalizeVisualizer(config.visualizer, names, mechanisms[0]?.name ?? ''),
+    visualizer: normalizeVisualizer(config.visualizer, names),
   };
 }
 
@@ -223,14 +263,10 @@ export function newSubsystem(): SubsystemConfig {
       enabled: false,
       mechanism2d: true,
       advantageScope3d: false,
-      drivenBy: 'roller',
       ligaments: [newLigament('roller')],
       rootXInches: 0,
       rootYInches: 10,
-      componentIndex: 0,
-      poseXInches: 0,
-      poseYInches: 0,
-      poseZInches: 0,
+      components: [newComponent3d('roller')],
     },
   };
 }
@@ -285,14 +321,12 @@ export function nomadIntakeExample(): SubsystemConfig {
       enabled: true,
       mechanism2d: true,
       advantageScope3d: false,
-      drivenBy: 'extension',
       ligaments: [newLigament('extension', { angleDegrees: 10.854 })],
       rootXInches: 11.5,
       rootYInches: 9.5,
-      componentIndex: 0,
-      poseXInches: -10.239,
-      poseYInches: 0,
-      poseZInches: 0,
+      components: [
+        newComponent3d('extension', { componentIndex: 0, offsetXInches: -10.239, axis: 'x' }),
+      ],
     },
   };
 }

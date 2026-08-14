@@ -102,23 +102,46 @@ export interface LigamentConfig {
   color: string;
 }
 
+export type Axis = 'x' | 'y' | 'z';
+
+/** Axis label pairs for the form; rotation names differ from translation. */
+export const AXES: Record<Axis, { translate: string; rotate: string }> = {
+  x: { translate: 'X (forward)', rotate: 'X (roll)' },
+  y: { translate: 'Y (left)', rotate: 'Y (pitch)' },
+  z: { translate: 'Z (up)', rotate: 'Z (yaw)' },
+};
+
+export interface Component3dConfig {
+  id: string;
+  /** Mechanism driving this component. An arm rotates, an elevator slides. */
+  drivenBy: string;
+  /**
+   * Another component's id, or empty for the robot origin. The offset below is
+   * measured from the parent, and the parent's *computed* pose is applied — so
+   * a chain articulates correctly to any depth.
+   */
+  parentId: string;
+  /** Index into RobotVisualizer.COMPONENTS, matching model_N.glb ordering. */
+  componentIndex: number;
+  offsetXInches: number;
+  offsetYInches: number;
+  offsetZInches: number;
+  /** Axis the mechanism moves along (elevator) or about (arm). */
+  axis: Axis;
+}
+
 export interface VisualizerConfig {
   enabled: boolean;
   mechanism2d: boolean;
   advantageScope3d: boolean;
-  /** Mechanism driving the AdvantageScope 3D component pose. */
-  drivenBy: string;
 
   /** Mechanism2d ligaments, in declaration order. */
   ligaments: LigamentConfig[];
   rootXInches: number;
   rootYInches: number;
 
-  /** Index into RobotVisualizer.COMPONENTS, matching model_N.glb ordering. */
-  componentIndex: number;
-  poseXInches: number;
-  poseYInches: number;
-  poseZInches: number;
+  /** AdvantageScope 3D components, in declaration order. */
+  components: Component3dConfig[];
 }
 
 export interface SubsystemConfig {

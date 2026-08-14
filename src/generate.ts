@@ -1,4 +1,9 @@
-import type { LigamentConfig, MechanismConfig, SubsystemConfig } from './types';
+import type {
+  Component3dConfig,
+  LigamentConfig,
+  MechanismConfig,
+  SubsystemConfig,
+} from './types';
 import { ARCHETYPES, TEST_STATES } from './types';
 import { normalizeConfig } from './defaults';
 import {
@@ -12,11 +17,13 @@ import {
   followerMotor,
   followerVoltageSignal,
   leadMotor,
+  lowerFirst,
   measureField,
   method,
   motorFields,
   motorIdConstants,
   quantity,
+  screaming,
   simConfigureCall,
   simField,
 } from './naming';
@@ -275,19 +282,26 @@ function ligamentFieldNames(ligaments: LigamentConfig[]): Map<string, string> {
 function generateSubsystem(config: SubsystemConfig): GeneratedFile {
   const { name, visualizer: viz } = config;
   const anyPositional = config.mechanisms.some(isPositional);
-  const driven = config.mechanisms.find((m) => m.name === viz.drivenBy);
-  const vizIsArm = driven?.archetype === 'arm';
   const ligaments = viz.enabled && viz.mechanism2d ? viz.ligaments : [];
   const viz2d = ligaments.length > 0;
   const fieldOf = ligamentFieldNames(ligaments);
   // A 3D pose only means something for a mechanism that moves in space.
-  const viz3d =
-    viz.enabled && viz.advantageScope3d && !!driven && isPositional(driven);
+  const components3d =
+    viz.enabled && viz.advantageScope3d ? orderedComponents(viz.components) : [];
+  const viz3d = components3d.some((c) => {
+    const m = config.mechanisms.find((x) => x.name === c.drivenBy);
+    return !!m && isPositional(m);
+  });
+  const needsUnits =
+    viz2d ||
+    components3d.some(
+      (c) => config.mechanisms.find((x) => x.name === c.drivenBy)?.archetype === 'arm',
+    );
 
   const imports = [
     'edu.wpi.first.wpilibj2.command.SubsystemBase',
     ...(viz2d || viz3d ? ['frc.robot.RobotVisualizer'] : []),
-    ...(viz2d || (viz3d && vizIsArm) ? ['edu.wpi.first.math.util.Units'] : []),
+    ...(needsUnits ? ['edu.wpi.first.math.util.Units'] : []),
     ...(viz2d
       ? [
           'edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d',
@@ -377,12 +391,16 @@ function generateSubsystem(config: SubsystemConfig): GeneratedFile {
     })
     .join('');
 
-  const update3d =
-    viz3d && driven
-      ? vizIsArm
-        ? `        RobotVisualizer.update${name}(\n                Units.degreesToRadians(inputs.${measureField(config, driven)}));\n`
-        : `        RobotVisualizer.update${name}(inputs.${measureField(config, driven)});\n`
-      : '';
+  const update3d = components3d
+    .map((c) => {
+      const m = config.mechanisms.find((x) => x.name === c.drivenBy);
+      if (!m || !isPositional(m)) return '';
+      const call = `RobotVisualizer.update${name}${cap(componentLabel(c, components3d))}`;
+      return m.archetype === 'arm'
+        ? `        ${call}(\n                Units.degreesToRadians(inputs.${measureField(config, m)}));\n`
+        : `        ${call}(inputs.${measureField(config, m)});\n`;
+    })
+    .join('');
 
   const vizUpdate = update2d || update3d ? `\n${update2d}${update3d}` : '';
 
@@ -1028,6 +1046,48 @@ export interface Snippet {
   code: string;
 }
 
+const componentLabel = (comp: Component3dConfig, all: Component3dConfig[]) =>
+  comp.drivenBy || `component${all.indexOf(comp) + 1}`;
+
+const componentConstPrefix = (
+  config: SubsystemConfig,
+  comp: Component3dConfig,
+  all: Component3dConfig[],
+) => `${screaming(config.name)}_${screaming(componentLabel(comp, all))}`;
+
+const componentValueField = (
+  config: SubsystemConfig,
+  comp: Component3dConfig,
+  all: Component3dConfig[],
+) => `${lowerFirst(config.name)}${cap(componentLabel(comp, all))}Value`;
+
+/** Parents before children, so a child can reference its parent's local pose. */
+function orderedComponents(components: Component3dConfig[]): Component3dConfig[] {
+  const out: Component3dConfig[] = [];
+  const placed = new Set<string>();
+  const visit = (comp: Component3dConfig) => {
+    if (placed.has(comp.id)) return;
+    const parent = components.find((p) => p.id === comp.parentId);
+    if (parent) visit(parent);
+    placed.add(comp.id);
+    out.push(comp);
+  };
+  components.forEach(visit);
+  return out;
+}
+
+/** The component's own motion, applied in its parent's frame. */
+function componentMotion(config: SubsystemConfig, comp: Component3dConfig): string {
+  const mech = config.mechanisms.find((m) => m.name === comp.drivenBy);
+  if (!mech || !isPositional(mech)) return 'new Transform3d()';
+  const value = componentValueField(config, comp, config.visualizer.components);
+  const slot = (axis: 'x' | 'y' | 'z') =>
+    (['x', 'y', 'z'] as const).map((a) => (a === axis ? value : '0.0')).join(', ');
+  return mech.archetype === 'arm'
+    ? `new Transform3d(\n                        Translation3d.kZero,\n                        new Rotation3d(${slot(comp.axis)}))`
+    : `new Transform3d(\n                        new Translation3d(${slot(comp.axis)}),\n                        Rotation3d.kZero)`;
+}
+
 export function generateVisualizerSnippets(rawConfig: SubsystemConfig): Snippet[] {
   const config = normalizeConfig(rawConfig);
   const { name, visualizer: viz } = config;
@@ -1035,8 +1095,6 @@ export function generateVisualizerSnippets(rawConfig: SubsystemConfig): Snippet[
 
   const upper = name.toUpperCase();
   const lower = name.toLowerCase();
-  const driven = config.mechanisms.find((m) => m.name === viz.drivenBy);
-  const isArm = driven?.archetype === 'arm';
   const snippets: Snippet[] = [];
 
   if (viz.mechanism2d) {
@@ -1061,50 +1119,82 @@ export function generateVisualizerSnippets(rawConfig: SubsystemConfig): Snippet[
     });
   }
 
-  if (viz.advantageScope3d) {
+  if (viz.advantageScope3d && viz.components.length) {
+    const ordered = orderedComponents(viz.components);
+
     snippets.push({
       label: '3D constants',
       target: 'the component index and pose constants block',
-      code: `    private static final int ${upper}_COMPONENT = ${viz.componentIndex};
+      code: ordered
+        .map((c) => {
+          const N = componentConstPrefix(config, c, viz.components);
+          return `    private static final int ${N}_COMPONENT = ${c.componentIndex};
 
-    private static final Pose3d ${upper}_LOCATION = new Pose3d(
-            Units.inchesToMeters(${d(viz.poseXInches)}),
-            Units.inchesToMeters(${d(viz.poseYInches)}),
-            Units.inchesToMeters(${d(viz.poseZInches)}),
-            new Rotation3d(0.0, 0.0, 0.0));`,
+    private static final Transform3d ${N}_OFFSET = new Transform3d(
+            new Translation3d(
+                    Units.inchesToMeters(${d(c.offsetXInches)}),
+                    Units.inchesToMeters(${d(c.offsetYInches)}),
+                    Units.inchesToMeters(${d(c.offsetZInches)})),
+            Rotation3d.kZero);`;
+        })
+        .join('\n\n'),
     });
+
     snippets.push({
-      label: '3D COMPONENTS entry',
+      label: '3D cached state',
+      target: 'the private static fields, beside the other cached angles',
+      code: ordered
+        .map(
+          (c) =>
+            `    private static double ${componentValueField(config, c, viz.components)};`,
+        )
+        .join('\n'),
+    });
+
+    snippets.push({
+      label: '3D COMPONENTS entries',
       target: 'the COMPONENTS array — order must match model_N.glb',
-      code: `    // Insert at index ${viz.componentIndex} of COMPONENTS:
-    //     ${upper}_LOCATION`,
+      code: ordered
+        .map(
+          (c) =>
+            `    // Index ${c.componentIndex}: ${componentConstPrefix(config, c, viz.components)}_OFFSET (starting pose)`,
+        )
+        .join('\n'),
     });
+
     snippets.push({
-      label: '3D update method',
+      label: '3D update methods',
       target: 'the 3D update methods',
-      code: isArm
-        ? `    /** Updates the ${lower} angle. The input is radians. No-op on a real robot. */
-    public static void update${name}(double angleRadians) {
+      code:
+        ordered
+          .map((c) => {
+            const mech = config.mechanisms.find((m) => m.name === c.drivenBy);
+            const arm = mech?.archetype === 'arm';
+            const label = componentLabel(c, viz.components);
+            const param = arm ? 'angleRadians' : 'positionMeters';
+            return `    /** Updates the ${label} ${arm ? 'angle. The input is radians' : 'travel. The input is meters'}. No-op on a real robot. */
+    public static void update${name}${cap(label)}(double ${param}) {
         if (!IS_SIM) {
             return;
         }
-        COMPONENTS[${upper}_COMPONENT] = ${upper}_LOCATION.transformBy(
-                new Transform3d(
-                        Translation3d.kZero,
-                        new Rotation3d(0.0, angleRadians, 0.0)));
-        publishComponents();
-    }`
-        : `    /** Updates the ${lower} travel. The input is meters. No-op on a real robot. */
-    public static void update${name}(double extensionMeters) {
-        if (!IS_SIM) {
-            return;
-        }
-        COMPONENTS[${upper}_COMPONENT] = ${upper}_LOCATION.transformBy(
-                new Transform3d(
-                        new Translation3d(extensionMeters, 0.0, 0.0),
-                        new Rotation3d(0.0, 0.0, 0.0)));
-        publishComponents();
-    }`,
+        ${componentValueField(config, c, viz.components)} = ${param};
+        update${name}Components();
+    }`;
+          })
+          .join('\n\n') +
+        `\n\n    private static void update${name}Components() {\n` +
+        ordered
+          .map((c) => {
+            const N = componentConstPrefix(config, c, viz.components);
+            const label = componentLabel(c, viz.components);
+            const parent = viz.components.find((p) => p.id === c.parentId);
+            const base = parent
+              ? `${componentLabel(parent, viz.components)}Pose`
+              : 'Pose3d.kZero';
+            return `        Pose3d ${label}Pose = ${base}\n                .transformBy(${N}_OFFSET)\n                .transformBy(${componentMotion(config, c)});\n        COMPONENTS[${N}_COMPONENT] = ${label}Pose;`;
+          })
+          .join('\n\n') +
+        `\n\n        publishComponents();\n    }`,
     });
   }
 

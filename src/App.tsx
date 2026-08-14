@@ -2,14 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import type {
   Archetype,
+  Axis,
+  Component3dConfig,
   LigamentConfig,
   MechanismConfig,
   SubsystemConfig,
 } from './types';
-import { ARCHETYPES, CAN_ID_MAX, CAN_ID_MIN, isCanIdInRange } from './types';
+import { ARCHETYPES, AXES, CAN_ID_MAX, CAN_ID_MIN, isCanIdInRange } from './types';
 import {
   newId,
   newMechanism,
+  newComponent3d,
   newLigament,
   newSubsystem,
   nomadIntakeExample,
@@ -113,11 +116,18 @@ export default function App() {
       const mechanisms = c.mechanisms.map((m) =>
         m.id === id ? normalizeMechanism({ ...m, ...p }) : m,
       );
-      // Follow a rename so the visualizer keeps pointing at the same mechanism.
-      const visualizer =
-        prev && p.name !== undefined && c.visualizer.drivenBy === prev.name
-          ? { ...c.visualizer, drivenBy: p.name }
-          : c.visualizer;
+      // Follow a rename so ligaments and 3D components keep pointing at the
+      // same mechanism instead of silently going static.
+      const renamed = prev && p.name !== undefined && p.name !== prev.name;
+      const retarget = <T extends { drivenBy: string }>(item: T): T =>
+        renamed && item.drivenBy === prev.name ? { ...item, drivenBy: p.name as string } : item;
+      const visualizer = renamed
+        ? {
+            ...c.visualizer,
+            ligaments: c.visualizer.ligaments.map(retarget),
+            components: c.visualizer.components.map(retarget),
+          }
+        : c.visualizer;
       return { ...c, mechanisms, visualizer };
     });
 
@@ -198,6 +208,20 @@ export default function App() {
   const parentLabel = (id: string) => {
     const index = viz.ligaments.findIndex((l) => l.id === id);
     return viz.ligaments[index]?.drivenBy || `segment ${index + 1}`;
+  };
+
+  const patchComponent = (id: string, p: Partial<Component3dConfig>) =>
+    setConfig((c) => ({
+      ...c,
+      visualizer: {
+        ...c.visualizer,
+        components: c.visualizer.components.map((o) => (o.id === id ? { ...o, ...p } : o)),
+      },
+    }));
+
+  const componentParentLabel = (id: string) => {
+    const index = viz.components.findIndex((o) => o.id === id);
+    return viz.components[index]?.drivenBy || `component ${index + 1}`;
   };
 
   const tabs = [...files.map((f) => f.name), ...(snippets.length ? ['Visualizer'] : [])];
@@ -506,64 +530,154 @@ export default function App() {
                 )}
                 {viz.advantageScope3d && (
                   <>
-                    <div className="subhead">3D pose (matches model_N.glb)</div>
-                    <label className="f">
-                      Driven by
-                      <select
-                        value={viz.drivenBy}
-                        onChange={(e) =>
-                          patch({ visualizer: { ...viz, drivenBy: e.target.value } })
-                        }
-                      >
-                        {config.mechanisms.map((m) => (
-                          <option key={m.id} value={m.name}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="f">
-                      Component index
-                      <input
-                        type="number"
-                        value={viz.componentIndex}
-                        onChange={(e) =>
+                    <div className="subhead">3D components (match model_N.glb)</div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      {viz.components.map((comp, i) => {
+                        const mech = config.mechanisms.find((m) => m.name === comp.drivenBy);
+                        const rotates = mech?.archetype === 'arm';
+                        return (
+                          <div className="ligament" key={comp.id}>
+                            <div className="ligament-grid">
+                              <label className="f">
+                                Driven by
+                                <select
+                                  value={comp.drivenBy}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, { drivenBy: e.target.value })
+                                  }
+                                >
+                                  <option value="">(static)</option>
+                                  {config.mechanisms.map((m) => (
+                                    <option key={m.id} value={m.name}>
+                                      {m.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="f">
+                                Attach to
+                                <select
+                                  value={comp.parentId}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, { parentId: e.target.value })
+                                  }
+                                >
+                                  <option value="">robot origin</option>
+                                  {viz.components
+                                    .filter((o) => o.id !== comp.id)
+                                    .map((o, j) => (
+                                      <option key={o.id} value={o.id}>
+                                        {o.drivenBy || `component ${j + 1}`}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                              <label className="f">
+                                {rotates ? 'Rotates about' : 'Slides along'}
+                                <select
+                                  value={comp.axis}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, { axis: e.target.value as Axis })
+                                  }
+                                >
+                                  {(Object.keys(AXES) as Axis[]).map((a) => (
+                                    <option key={a} value={a}>
+                                      {rotates ? AXES[a].rotate : AXES[a].translate}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="f">
+                                Component index
+                                <input
+                                  type="number"
+                                  value={comp.componentIndex}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, {
+                                      componentIndex: Number(e.target.value),
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="f">
+                                Offset X (in)
+                                <input
+                                  type="number"
+                                  value={comp.offsetXInches}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, {
+                                      offsetXInches: Number(e.target.value),
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="f">
+                                Offset Y (in)
+                                <input
+                                  type="number"
+                                  value={comp.offsetYInches}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, {
+                                      offsetYInches: Number(e.target.value),
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className="f">
+                                Offset Z (in)
+                                <input
+                                  type="number"
+                                  value={comp.offsetZInches}
+                                  onChange={(e) =>
+                                    patchComponent(comp.id, {
+                                      offsetZInches: Number(e.target.value),
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <button
+                              className="icon-btn"
+                              title="Remove component"
+                              onClick={() =>
+                                patch({
+                                  visualizer: {
+                                    ...viz,
+                                    components: viz.components.filter((o) => o.id !== comp.id),
+                                  },
+                                })
+                              }
+                            >
+                              ×
+                            </button>
+                            <span className="ligament-tag">
+                              {comp.parentId
+                                ? `offset from ${componentParentLabel(comp.parentId)}`
+                                : 'offset from robot origin'}
+                              {i >= 0 && !mech ? ' · static' : ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() =>
                           patch({
-                            visualizer: { ...viz, componentIndex: Number(e.target.value) },
+                            visualizer: {
+                              ...viz,
+                              components: [
+                                ...viz.components,
+                                newComponent3d('', {
+                                  parentId: viz.components.at(-1)?.id ?? '',
+                                  componentIndex: viz.components.length,
+                                }),
+                              ],
+                            },
                           })
                         }
-                      />
-                    </label>
-                    <label className="f">
-                      Pose X (in)
-                      <input
-                        type="number"
-                        value={viz.poseXInches}
-                        onChange={(e) =>
-                          patch({ visualizer: { ...viz, poseXInches: Number(e.target.value) } })
-                        }
-                      />
-                    </label>
-                    <label className="f">
-                      Pose Y (in)
-                      <input
-                        type="number"
-                        value={viz.poseYInches}
-                        onChange={(e) =>
-                          patch({ visualizer: { ...viz, poseYInches: Number(e.target.value) } })
-                        }
-                      />
-                    </label>
-                    <label className="f">
-                      Pose Z (in)
-                      <input
-                        type="number"
-                        value={viz.poseZInches}
-                        onChange={(e) =>
-                          patch({ visualizer: { ...viz, poseZInches: Number(e.target.value) } })
-                        }
-                      />
-                    </label>
+                      >
+                        + component
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
