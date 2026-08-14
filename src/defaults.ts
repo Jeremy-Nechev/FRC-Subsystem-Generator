@@ -1,4 +1,10 @@
-import type { Archetype, MechanismConfig, SubsystemConfig } from './types';
+import type {
+  Archetype,
+  LigamentConfig,
+  MechanismConfig,
+  SubsystemConfig,
+  VisualizerConfig,
+} from './types';
 import { ARCHETYPES } from './types';
 
 /**
@@ -107,14 +113,82 @@ export function normalizeMechanism(mech: MechanismConfig): MechanismConfig {
   return controls.includes(filled.control) ? filled : { ...filled, control: controls[0] };
 }
 
+export function newLigament(
+  drivenBy: string,
+  overrides: Partial<LigamentConfig> = {},
+): LigamentConfig {
+  return {
+    id: newId(),
+    drivenBy,
+    parentId: '',
+    lengthInches: 8,
+    angleDegrees: 0,
+    width: 6,
+    color: '52, 235, 137',
+    ...overrides,
+  };
+}
+
+/** Shape of the pre-multi-ligament visualizer config, for migration. */
+interface LegacyVisualizer {
+  ligamentLengthInches?: number;
+  ligamentAngleDegrees?: number;
+  ligamentWidth?: number;
+  color?: string;
+}
+
+function normalizeVisualizer(
+  viz: VisualizerConfig,
+  mechanismNames: Set<string>,
+  fallbackName: string,
+): VisualizerConfig {
+  const legacy = viz as VisualizerConfig & LegacyVisualizer;
+  let ligaments = Array.isArray(viz.ligaments) ? viz.ligaments : [];
+
+  // Configs saved before ligaments were a list carried one flat set of fields.
+  if (!ligaments.length && legacy.ligamentLengthInches !== undefined) {
+    ligaments = [
+      newLigament(mechanismNames.has(viz.drivenBy) ? viz.drivenBy : '', {
+        lengthInches: legacy.ligamentLengthInches,
+        angleDegrees: legacy.ligamentAngleDegrees ?? 0,
+        width: legacy.ligamentWidth ?? 6,
+        color: legacy.color ?? '52, 235, 137',
+      }),
+    ];
+  }
+
+  const byId = new Map(ligaments.map((l) => [l.id, l]));
+  const sanitized = ligaments.map((l) => {
+    const drivenBy = mechanismNames.has(l.drivenBy) ? l.drivenBy : '';
+    let parentId = l.parentId !== l.id && byId.has(l.parentId) ? l.parentId : '';
+    // Walk up the chain; a loop would recurse forever when generating appends.
+    const seen = new Set([l.id]);
+    for (let cursor = parentId; cursor; cursor = byId.get(cursor)?.parentId ?? '') {
+      if (seen.has(cursor)) {
+        parentId = '';
+        break;
+      }
+      seen.add(cursor);
+    }
+    return { ...l, drivenBy, parentId };
+  });
+
+  return {
+    ...viz,
+    ligaments: sanitized,
+    drivenBy: mechanismNames.has(viz.drivenBy) ? viz.drivenBy : fallbackName,
+  };
+}
+
 /** Repairs anything that can drift out of sync across the whole config. */
 export function normalizeConfig(config: SubsystemConfig): SubsystemConfig {
   const mechanisms = config.mechanisms.map(normalizeMechanism);
   const names = new Set(mechanisms.map((m) => m.name));
-  const visualizer = names.has(config.visualizer.drivenBy)
-    ? config.visualizer
-    : { ...config.visualizer, drivenBy: mechanisms[0]?.name ?? '' };
-  return { ...config, mechanisms, visualizer };
+  return {
+    ...config,
+    mechanisms,
+    visualizer: normalizeVisualizer(config.visualizer, names, mechanisms[0]?.name ?? ''),
+  };
 }
 
 /**
@@ -150,10 +224,7 @@ export function newSubsystem(): SubsystemConfig {
       mechanism2d: true,
       advantageScope3d: false,
       drivenBy: 'roller',
-      ligamentLengthInches: 8,
-      ligamentAngleDegrees: 0,
-      ligamentWidth: 6,
-      color: '52, 235, 137',
+      ligaments: [newLigament('roller')],
       rootXInches: 0,
       rootYInches: 10,
       componentIndex: 0,
@@ -215,10 +286,7 @@ export function nomadIntakeExample(): SubsystemConfig {
       mechanism2d: true,
       advantageScope3d: false,
       drivenBy: 'extension',
-      ligamentLengthInches: 8,
-      ligamentAngleDegrees: 10.854,
-      ligamentWidth: 6,
-      color: '52, 235, 137',
+      ligaments: [newLigament('extension', { angleDegrees: 10.854 })],
       rootXInches: 11.5,
       rootYInches: 9.5,
       componentIndex: 0,

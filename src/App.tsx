@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
-import type { Archetype, MechanismConfig, SubsystemConfig } from './types';
-import { ARCHETYPES } from './types';
+import type {
+  Archetype,
+  LigamentConfig,
+  MechanismConfig,
+  SubsystemConfig,
+} from './types';
+import { ARCHETYPES, CAN_ID_MAX, CAN_ID_MIN, isCanIdInRange } from './types';
 import {
   newId,
   newMechanism,
+  newLigament,
   newSubsystem,
   nomadIntakeExample,
   normalizeConfig,
@@ -50,6 +56,13 @@ function validate(config: SubsystemConfig): string[] {
     problems.push(`Duplicate CAN id${dupes.length > 1 ? 's' : ''}: ${dupes.join(', ')}.`);
   }
 
+  const badIds = [...new Set(ids.filter((id) => !isCanIdInRange(id)))];
+  if (badIds.length) {
+    problems.push(
+      `CAN id${badIds.length > 1 ? 's' : ''} outside ${CAN_ID_MIN}–${CAN_ID_MAX}: ${badIds.join(', ')}.`,
+    );
+  }
+
   const names = config.mechanisms.map((m) => m.name);
   const dupeNames = [...new Set(names.filter((n, i) => names.indexOf(n) !== i))];
   if (dupeNames.length) {
@@ -84,9 +97,12 @@ export default function App() {
   const snippets = useMemo(() => generateVisualizerSnippets(config), [config]);
   const problems = useMemo(() => validate(config), [config]);
 
-  const duplicateIds = useMemo(() => {
+  /** CAN ids to flag inline: duplicated across mechanisms, or out of range. */
+  const badCanIds = useMemo(() => {
     const ids = config.mechanisms.flatMap((m) => m.motors.map((mo) => mo.canId));
-    return new Set(ids.filter((id, i) => ids.indexOf(id) !== i));
+    return new Set(
+      ids.filter((id, i) => ids.indexOf(id) !== i || !isCanIdInRange(id)),
+    );
   }, [config]);
 
   const patch = (p: Partial<SubsystemConfig>) => setConfig((c) => ({ ...c, ...p }));
@@ -169,6 +185,21 @@ export default function App() {
   };
 
   const viz = config.visualizer;
+
+  const patchLigament = (id: string, p: Partial<LigamentConfig>) =>
+    setConfig((c) => ({
+      ...c,
+      visualizer: {
+        ...c.visualizer,
+        ligaments: c.visualizer.ligaments.map((l) => (l.id === id ? { ...l, ...p } : l)),
+      },
+    }));
+
+  const parentLabel = (id: string) => {
+    const index = viz.ligaments.findIndex((l) => l.id === id);
+    return viz.ligaments[index]?.drivenBy || `segment ${index + 1}`;
+  };
+
   const tabs = [...files.map((f) => f.name), ...(snippets.length ? ['Visualizer'] : [])];
   const activeTab = Math.min(tab, tabs.length - 1);
 
@@ -259,7 +290,7 @@ export default function App() {
                 key={m.id}
                 mech={m}
                 open={openId === m.id}
-                duplicateIds={duplicateIds}
+                badCanIds={badCanIds}
                 onToggle={() => setOpenId(openId === m.id ? null : m.id)}
                 onChange={(p) => patchMechanism(m.id, p)}
                 onRemove={() =>
@@ -327,53 +358,130 @@ export default function App() {
                   />
                   AdvantageScope 3D poses
                 </label>
-                <label className="f">
-                  Driven by
-                  <select
-                    value={viz.drivenBy}
-                    onChange={(e) => patch({ visualizer: { ...viz, drivenBy: e.target.value } })}
-                  >
-                    {config.mechanisms.map((m) => (
-                      <option key={m.id} value={m.name}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 {viz.mechanism2d && (
                   <>
-                    <div className="subhead">Mechanism2d</div>
-                    <label className="f">
-                      Ligament length (in)
-                      <input
-                        type="number"
-                        value={viz.ligamentLengthInches}
-                        onChange={(e) =>
+                    <div className="subhead">Mechanism2d ligaments</div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      {viz.ligaments.map((lig) => (
+                        <div className="ligament" key={lig.id}>
+                          <div className="ligament-grid">
+                            <label className="f">
+                              Driven by
+                              <select
+                                value={lig.drivenBy}
+                                onChange={(e) =>
+                                  patchLigament(lig.id, { drivenBy: e.target.value })
+                                }
+                              >
+                                <option value="">(static)</option>
+                                {config.mechanisms.map((m) => (
+                                  <option key={m.id} value={m.name}>
+                                    {m.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="f">
+                              Attach to
+                              <select
+                                value={lig.parentId}
+                                onChange={(e) =>
+                                  patchLigament(lig.id, { parentId: e.target.value })
+                                }
+                              >
+                                <option value="">root</option>
+                                {viz.ligaments
+                                  .filter((o) => o.id !== lig.id)
+                                  .map((o, j) => (
+                                    <option key={o.id} value={o.id}>
+                                      {o.drivenBy || `segment ${j + 1}`}
+                                    </option>
+                                  ))}
+                              </select>
+                            </label>
+                            <label className="f">
+                              Length (in)
+                              <input
+                                type="number"
+                                value={lig.lengthInches}
+                                onChange={(e) =>
+                                  patchLigament(lig.id, {
+                                    lengthInches: Number(e.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="f">
+                              Angle (deg)
+                              <input
+                                type="number"
+                                value={lig.angleDegrees}
+                                onChange={(e) =>
+                                  patchLigament(lig.id, {
+                                    angleDegrees: Number(e.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+                            <label className="f">
+                              Width
+                              <input
+                                type="number"
+                                value={lig.width}
+                                onChange={(e) =>
+                                  patchLigament(lig.id, { width: Number(e.target.value) })
+                                }
+                              />
+                            </label>
+                            <label className="f">
+                              Colour (r, g, b)
+                              <input
+                                value={lig.color}
+                                onChange={(e) =>
+                                  patchLigament(lig.id, { color: e.target.value })
+                                }
+                              />
+                            </label>
+                          </div>
+                          <button
+                            className="icon-btn"
+                            title="Remove ligament"
+                            onClick={() =>
+                              patch({
+                                visualizer: {
+                                  ...viz,
+                                  ligaments: viz.ligaments.filter((o) => o.id !== lig.id),
+                                },
+                              })
+                            }
+                          >
+                            ×
+                          </button>
+                          <span className="ligament-tag">
+                            {lig.parentId
+                              ? `appended to ${parentLabel(lig.parentId)}`
+                              : 'attached to root'}
+                          </span>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() =>
                           patch({
-                            visualizer: { ...viz, ligamentLengthInches: Number(e.target.value) },
+                            visualizer: {
+                              ...viz,
+                              ligaments: [
+                                ...viz.ligaments,
+                                newLigament('', {
+                                  parentId: viz.ligaments.at(-1)?.id ?? '',
+                                }),
+                              ],
+                            },
                           })
                         }
-                      />
-                    </label>
-                    <label className="f">
-                      Ligament angle (deg)
-                      <input
-                        type="number"
-                        value={viz.ligamentAngleDegrees}
-                        onChange={(e) =>
-                          patch({
-                            visualizer: { ...viz, ligamentAngleDegrees: Number(e.target.value) },
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="f">
-                      Colour (r, g, b)
-                      <input
-                        value={viz.color}
-                        onChange={(e) => patch({ visualizer: { ...viz, color: e.target.value } })}
-                      />
-                    </label>
+                      >
+                        + ligament
+                      </button>
+                    </div>
                     <label className="f">
                       Root X offset (in)
                       <input
@@ -399,6 +507,21 @@ export default function App() {
                 {viz.advantageScope3d && (
                   <>
                     <div className="subhead">3D pose (matches model_N.glb)</div>
+                    <label className="f">
+                      Driven by
+                      <select
+                        value={viz.drivenBy}
+                        onChange={(e) =>
+                          patch({ visualizer: { ...viz, drivenBy: e.target.value } })
+                        }
+                      >
+                        {config.mechanisms.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="f">
                       Component index
                       <input

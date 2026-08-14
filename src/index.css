@@ -307,6 +307,33 @@ label.check input {
   margin-bottom: 5px;
 }
 
+.ligament {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 30px 8px 10px;
+  margin-bottom: 6px;
+}
+
+.ligament-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 8px;
+}
+
+.ligament-tag {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.ligament > .icon-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
 .motor-row .tag {
   font-size: 11.5px;
   color: var(--text-dim);

@@ -1,4 +1,4 @@
-import type { MechanismConfig, SubsystemConfig } from './types';
+import type { LigamentConfig, MechanismConfig, SubsystemConfig } from './types';
 import { ARCHETYPES, TEST_STATES } from './types';
 import { normalizeConfig } from './defaults';
 import {
@@ -253,12 +253,33 @@ ${inputs}
 
 // -------------------------------------------------------------- X.java
 
+/** Display label for a ligament — matches the "segment N" wording in the form. */
+const ligamentLabel = (lig: LigamentConfig, index: number) =>
+  lig.drivenBy || `segment${index + 1}`;
+
+/** Java field name per ligament, kept unique when two share a mechanism. */
+function ligamentFieldNames(ligaments: LigamentConfig[]): Map<string, string> {
+  const used = new Set<string>();
+  const map = new Map<string, string>();
+  ligaments.forEach((lig, i) => {
+    const base = `${ligamentLabel(lig, i)}Ligament`;
+    let fieldName = base;
+    let n = 2;
+    while (used.has(fieldName)) fieldName = `${base}${n++}`;
+    used.add(fieldName);
+    map.set(lig.id, fieldName);
+  });
+  return map;
+}
+
 function generateSubsystem(config: SubsystemConfig): GeneratedFile {
   const { name, visualizer: viz } = config;
   const anyPositional = config.mechanisms.some(isPositional);
   const driven = config.mechanisms.find((m) => m.name === viz.drivenBy);
   const vizIsArm = driven?.archetype === 'arm';
-  const viz2d = viz.enabled && viz.mechanism2d;
+  const ligaments = viz.enabled && viz.mechanism2d ? viz.ligaments : [];
+  const viz2d = ligaments.length > 0;
+  const fieldOf = ligamentFieldNames(ligaments);
   // A 3D pose only means something for a mechanism that moves in space.
   const viz3d =
     viz.enabled && viz.advantageScope3d && !!driven && isPositional(driven);
@@ -319,22 +340,42 @@ function generateSubsystem(config: SubsystemConfig): GeneratedFile {
   const resolvers = config.mechanisms.map((m) => resolver(config, m)).join('\n\n');
 
   const ligament = viz2d
-    ? `
-    private final MechanismLigament2d ${name.toLowerCase()}Ligament = new MechanismLigament2d(
-            "${name.toLowerCase()}",
-            Units.inchesToMeters(${d(viz.ligamentLengthInches)}),
-            ${d(viz.ligamentAngleDegrees)},
-            ${d(viz.ligamentWidth)},
-            new Color8Bit(${viz.color}));
-`
+    ? '\n' +
+      ligaments
+        .map((lig, i) => {
+          return `    private final MechanismLigament2d ${fieldOf.get(lig.id)} = new MechanismLigament2d(
+            "${ligamentLabel(lig, i)}",
+            Units.inchesToMeters(${d(lig.lengthInches)}),
+            ${d(lig.angleDegrees)},
+            ${d(lig.width)},
+            new Color8Bit(${lig.color}));`;
+        })
+        .join('\n\n') +
+      '\n'
     : '';
 
-  const update2d =
-    viz2d && driven
-      ? vizIsArm
-        ? `        ${name.toLowerCase()}Ligament.setAngle(inputs.${measureField(config, driven)});\n`
-        : `        ${name.toLowerCase()}Ligament.setLength(\n                Units.inchesToMeters(${d(viz.ligamentLengthInches)}) + inputs.${measureField(config, driven)});\n`
-      : '';
+  /** Root ligaments attach to the subsystem root; the rest append to a parent. */
+  const ligamentWiring = ligaments
+    .map((lig) =>
+      lig.parentId
+        ? `        ${fieldOf.get(lig.parentId)}.append(${fieldOf.get(lig.id)});`
+        : `        RobotVisualizer.add${name}(${fieldOf.get(lig.id)});`,
+    )
+    .join('\n');
+
+  const update2d = ligaments
+    .map((lig) => {
+      const m = config.mechanisms.find((x) => x.name === lig.drivenBy);
+      if (!m) return '';
+      const field = fieldOf.get(lig.id);
+      const measure = measureField(config, m);
+      if (m.archetype === 'arm') return `        ${field}.setAngle(inputs.${measure});\n`;
+      if (m.archetype === 'elevator') {
+        return `        ${field}.setLength(\n                Units.inchesToMeters(${d(lig.lengthInches)}) + inputs.${measure});\n`;
+      }
+      return '';
+    })
+    .join('');
 
   const update3d =
     viz3d && driven
@@ -374,7 +415,7 @@ ${ligament}
     }
 
     public ${name}(${name}IO io) {
-        this.io = io;${viz2d ? `\n        RobotVisualizer.add${name}(${name.toLowerCase()}Ligament);` : ''}
+        this.io = io;${viz2d ? `\n${ligamentWiring}` : ''}
     }
 
     public void setState(${name}State state) {

@@ -1,12 +1,13 @@
 import type { Archetype, MechanismConfig } from '../types';
-import { ARCHETYPES } from '../types';
+import { ARCHETYPES, CAN_ID_MAX, CAN_ID_MIN } from '../types';
 import { quantity } from '../naming';
 import { reseedForArchetype } from '../defaults';
 
 interface Props {
   mech: MechanismConfig;
   open: boolean;
-  duplicateIds: Set<number>;
+  /** Ids to flag inline: duplicated, or outside the valid CAN range. */
+  badCanIds: Set<number>;
   onToggle: () => void;
   onChange: (patch: Partial<MechanismConfig>) => void;
   onRemove: () => void;
@@ -40,7 +41,7 @@ function Num({
 export function MechanismCard({
   mech,
   open,
-  duplicateIds,
+  badCanIds,
   onToggle,
   onChange,
   onRemove,
@@ -142,7 +143,11 @@ export function MechanismCard({
                   <span className="tag">{i === 0 ? 'lead' : `follow ${i}`}</span>
                   <input
                     type="number"
-                    className={duplicateIds.has(motor.canId) ? 'invalid' : ''}
+                    min={CAN_ID_MIN}
+                    max={CAN_ID_MAX}
+                    step={1}
+                    title={`CAN id must be ${CAN_ID_MIN}–${CAN_ID_MAX}`}
+                    className={badCanIds.has(motor.canId) ? 'invalid' : ''}
                     value={motor.canId}
                     onChange={(e) => setMotor(i, { canId: Number(e.target.value) })}
                   />

@@ -81,18 +81,36 @@ export interface MechanismConfig {
   testVolts: number;
 }
 
+export interface LigamentConfig {
+  id: string;
+  /**
+   * Mechanism whose measurement drives this ligament. An elevator drives its
+   * length, an arm its angle. Empty leaves the ligament static — useful for a
+   * fixed segment that only exists to position its children.
+   */
+  drivenBy: string;
+  /**
+   * Another ligament's id to append to, or empty to attach to the subsystem's
+   * own Mechanism2d root. Appending inherits the parent's tip position and
+   * angle, which is how a jointed arm stacks on top of an elevator.
+   */
+  parentId: string;
+  lengthInches: number;
+  angleDegrees: number;
+  width: number;
+  /** "r, g, b" passed straight into Color8Bit. */
+  color: string;
+}
+
 export interface VisualizerConfig {
   enabled: boolean;
   mechanism2d: boolean;
   advantageScope3d: boolean;
-  /** Name of the mechanism whose position drives the drawing. */
+  /** Mechanism driving the AdvantageScope 3D component pose. */
   drivenBy: string;
 
-  ligamentLengthInches: number;
-  ligamentAngleDegrees: number;
-  ligamentWidth: number;
-  /** "r, g, b" passed straight into Color8Bit. */
-  color: string;
+  /** Mechanism2d ligaments, in declaration order. */
+  ligaments: LigamentConfig[];
   rootXInches: number;
   rootYInches: number;
 
@@ -158,3 +176,10 @@ export const ARCHETYPES: Record<Archetype, ArchetypeMeta> = {
 
 /** The states the generator always emits, for bring-up testing. */
 export const TEST_STATES = ['IDLE', 'TEST_FORWARD', 'TEST_REVERSE'] as const;
+
+/** CTRE device ids run 0–62; 63 is reserved for broadcast. */
+export const CAN_ID_MIN = 0;
+export const CAN_ID_MAX = 62;
+
+export const isCanIdInRange = (id: number) =>
+  Number.isInteger(id) && id >= CAN_ID_MIN && id <= CAN_ID_MAX;
