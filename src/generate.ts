@@ -698,26 +698,36 @@ function generateTalonFX(config: SubsystemConfig): GeneratedFile {
     .map((m) => configureMethod(config, m))
     .join('\n\n');
 
-  const updateBlocks = config.mechanisms
+  // One batched refresh for every signal in the subsystem. Refreshing per
+  // mechanism costs a separate blocking wait each time; batching makes it one.
+  const allSignals = config.mechanisms.flatMap((m) => [
+    isPositional(m) ? `m_${m.name}Position` : `m_${m.name}Velocity`,
+    `m_${m.name}AppliedVoltage`,
+    `m_${m.name}StatorCurrent`,
+    `m_${m.name}SupplyCurrent`,
+    ...m.motors.flatMap((_, i) => (i === 0 ? [] : [followerVoltageSignal(m, i)])),
+  ]);
+
+  const refreshAll = [
+    '        BaseStatusSignal.refreshAll(',
+    allSignals.map((s) => `                ${s}`).join(',\n') + ');',
+  ].join('\n');
+
+  // Connectivity comes from the device rather than the refresh status, so a
+  // single batched refresh still reports each motor independently.
+  const connectedFlags = config.mechanisms
+    .flatMap((m) =>
+      motorFields(m).map(
+        (motorField, i) =>
+          `        inputs.${connectedField(config, m, i)} = ${motorField}.isConnected();`,
+      ),
+    )
+    .join('\n');
+
+  const valueBlocks = config.mechanisms
     .map((m) => {
       const n = m.name;
-      const measure = isPositional(m) ? `m_${n}Position` : `m_${n}Velocity`;
       const lines: string[] = [];
-      lines.push(`        inputs.${connectedField(config, m, 0)} =`);
-      lines.push(`                BaseStatusSignal.refreshAll(`);
-      lines.push(`                        ${measure},`);
-      lines.push(`                        m_${n}AppliedVoltage,`);
-      lines.push(`                        m_${n}StatorCurrent,`);
-      lines.push(`                        m_${n}SupplyCurrent)`);
-      lines.push(`                        .isOK();`);
-      m.motors.forEach((_, i) => {
-        if (i === 0) return;
-        lines.push(`        inputs.${connectedField(config, m, i)} =`);
-        lines.push(
-          `                BaseStatusSignal.refreshAll(${followerVoltageSignal(m, i)}).isOK();`,
-        );
-      });
-      lines.push('');
       const value = isPositional(m)
         ? m.archetype === 'arm'
           ? `${n}RotationsToDegrees(m_${n}Position.getValueAsDouble())`
@@ -740,6 +750,8 @@ function generateTalonFX(config: SubsystemConfig): GeneratedFile {
       return lines.join('\n');
     })
     .join('\n\n');
+
+  const updateBlocks = [refreshAll, connectedFlags, valueBlocks].join('\n\n');
 
   const setters = config.mechanisms
     .map((m) => {
