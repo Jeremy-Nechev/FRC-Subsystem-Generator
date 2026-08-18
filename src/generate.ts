@@ -415,8 +415,8 @@ ${constants}
     }
 
     /**
-     * Bring-up test states. Replace these with the real states for this
-     * mechanism once the hardware is verified.
+     * These states are provided to help verify the logic and PID control in simulation.
+     * You will need to replace these with the actual states or logic that this subsystem uses.
      */
     public enum ${name}State {
 ${TEST_STATES.map((s) => `        ${s}`).join(',\n')}
